@@ -24,6 +24,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.core.content.ContextCompat
@@ -41,8 +42,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var customToastView: TextView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // Client ID الخاص بجوجل من مشروعك في Google Cloud Console / Firebase
-    private val googleClientId = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
+    // Client ID الخاص بجوجل لمشروع تطبيق وصلني بورسعيد
+    private val googleClientId = "283597327008-pvgpazyr7qqyc4cetwc52r.apps.googleusercontent.com"
 
     private val appUrl = "https://ais-dev-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
     private val handler = Handler(Looper.getMainLooper())
@@ -106,7 +107,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // جسر التواصل بين الـ JavaScript والـ Android لطلب تسجيل الدخول الاحترافي
+    // جسر التواصل بين JavaScript والـ Android
     inner class AndroidBridge {
         @JavascriptInterface
         fun retryConnection() {
@@ -151,7 +152,7 @@ class MainActivity : AppCompatActivity() {
                     val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                     val idToken = googleIdTokenCredential.idToken
                     
-                    // إرسال التوكن للـ WebView لإكمال الدخول بنجاح
+                    // إرسال التوكن للـ WebView لإكمال الدخول مباشرة بدون متصفح خارجي
                     webView.evaluateJavascript("javascript:handleGoogleToken('$idToken');", null)
                 }
             } catch (e: GetCredentialException) {
@@ -347,7 +348,7 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
 
-                // عند الضغط على زر تسجيل جوجل في الويب، يتم تحويل الطلب للـ Native Sign-In
+                // عند طلب تسجيل دخول بجوجل، يتم تشغيل نافذة أندرويد السفلية الرسمية مباشرة بدون متصفح علوي
                 if (url.contains("accounts.google.com") || url.contains("google.com/signin")) {
                     launchNativeGoogleSignIn()
                     return true
