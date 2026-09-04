@@ -130,7 +130,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // استدعاء نافذة جوجل الرسمية بضغطة واحدة (One-Tap Bottom Sheet)
+    // استدعاء نافذة جوجل الرسمية بضغطة واحدة (One-Tap Bottom Sheet) وتمرير التوكن بدقة
     private fun launchNativeGoogleSignIn() {
         val credentialManager = CredentialManager.create(this)
 
@@ -152,11 +152,32 @@ class MainActivity : AppCompatActivity() {
                     val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                     val idToken = googleIdTokenCredential.idToken
                     
-                    // إرسال التوكن للـ WebView لإكمال الدخول مباشرة بدون متصفح خارجي
-                    webView.evaluateJavascript("javascript:handleGoogleToken('$idToken');", null)
+                    // إرسال التوكن للـ WebView ومعالجة تسجيل الدخول في الويب مع إخفاء شاشة التحميل
+                    webView.evaluateJavascript(
+                        """
+                        (function() {
+                            if (typeof window.handleGoogleToken === 'function') {
+                                window.handleGoogleToken('$idToken');
+                            } else if (typeof firebase !== 'undefined' && firebase.auth) {
+                                const credential = firebase.auth.GoogleAuthProvider.credential('$idToken');
+                                firebase.auth().signInWithCredential(credential).then(() => {
+                                    window.location.reload();
+                                }).catch((err) => {
+                                    console.error('Firebase token auth error:', err);
+                                });
+                            } else {
+                                console.log('Token received:', '$idToken');
+                            }
+                        })();
+                        """.trimIndent()
+                    ) {
+                        showLoading(false)
+                    }
                 }
             } catch (e: GetCredentialException) {
                 Log.e("GoogleSignIn", "فشل تسجيل الدخول: ${e.message}")
+                showLoading(false)
+                showCustomNotification("تعذر إكمال تسجيل الدخول، يرجى المحاولة مرة أخرى")
             }
         }
     }
