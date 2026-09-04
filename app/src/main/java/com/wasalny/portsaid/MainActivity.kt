@@ -1,4 +1,3 @@
-
 package com.wasalny.portsaid
 
 import android.Manifest
@@ -22,9 +21,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // رابط تطبيقك المباشر في بورسعيد
-    private val appUrl = "https://ais-pre-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
+    // الرابط المباشر والحي لتطبيق وصلني بورسعيد
+    private val appUrl = "https://ais-dev-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
 
+    // معالج رفع صور توثيق الكباتن والسيارة والهوية
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -35,12 +35,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // معالج طلب أذونات الـ GPS الدقيق والكاميرا والاستوديو
     private val requestPermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
         if (!fineLocationGranted) {
-            Toast.makeText(this, "يرجى الموافقة على تحديد الموقع لرؤية رادار بورسعيد", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "يرجى تفعيل إذن الموقع لرؤية خريطة ورادار بورسعيد بدقة", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -56,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         setupBackNavigation()
 
+        // لون السحب للتحديث بالأخضر الليموني المميز لتطبيق بورسعيد
         swipeRefreshLayout.setColorSchemeColors(getColor(R.color.primary_lime))
         swipeRefreshLayout.setOnRefreshListener {
             webView.reload()
@@ -106,6 +108,8 @@ class MainActivity : AppCompatActivity() {
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
+
+                // دعم الروابط الخارجية مثل محادثات الواتساب، والاتصال برقم الكابتن/الراكب
                 if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.startsWith("mailto:")) {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     startActivity(intent)
@@ -116,6 +120,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webChromeClient = object : WebChromeClient() {
+            // تفعيل إذن الموقع الجغرافي للخرائط تلقائياً بدون تعليق
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
                 callback: GeolocationPermissions.Callback?
@@ -123,6 +128,7 @@ class MainActivity : AppCompatActivity() {
                 callback?.invoke(origin, true, false)
             }
 
+            // تفعيل اختيار ورفع الصور لتوثيق الحسابات ورخص القيادة
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
@@ -141,6 +147,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupBackNavigation() {
+        // إدارة زر الرجوع في الهاتف للرجوع بين شاشات التطبيق بدلاً من الخروج
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (webView.canGoBack()) {
