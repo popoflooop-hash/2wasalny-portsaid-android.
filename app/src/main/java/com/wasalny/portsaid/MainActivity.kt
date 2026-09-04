@@ -2,19 +2,24 @@ package com.wasalny.portsaid
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Dialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
+import android.os.Message
+import android.view.ViewGroup
+import android.view.Window
 import android.webkit.*
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
@@ -24,10 +29,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // الرابط المباشر والحي لتطبيق وصلني بورسعيد
+    // الرابط المباشر لتطبيق وصلني بورسعيد
     private val appUrl = "https://ais-dev-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
 
-    // معالج رفع صور توثيق الكباتن والسيارة والهوية (يفتح فقط عند ضغط المستخدم)
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -38,7 +42,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // طلب إذن الموقع الجغرافي فقط بدقة لعرض الخريطة ورادار الرحلات
     private val requestLocationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -60,7 +63,6 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         setupBackNavigation()
 
-        // لون السحب للتحديث بلون التطبيق المميز
         swipeRefreshLayout.setColorSchemeColors(getColor(R.color.primary_lime))
         swipeRefreshLayout.setOnRefreshListener {
             if (isNetworkAvailable()) {
@@ -152,7 +154,7 @@ class MainActivity : AppCompatActivity() {
             <body>
                 <div class="icon">📡</div>
                 <h1>لا يوجد اتصال بالإنترنت</h1>
-                <p>يحتاج تطبيق وصلني بورسعيد للاتصال بالشبكة لتحديث الرادار والرحلات والتسجيل.</p>
+                <p>يحتاج تطبيق وصلني بورسعيد للاتصال بالشبكة لتحديث الرادار والرحلات.</p>
                 <button class="btn" onclick="location.reload()">إعادة المحاولة الآن</button>
             </body>
             </html>
@@ -174,11 +176,15 @@ class MainActivity : AppCompatActivity() {
         settings.loadWithOverviewMode = true
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
+        // تفعيل النوافذ المتعددة والمنبثقة للحفاظ على تجربة تسجيل الدخول
+        settings.setSupportMultipleWindows(true)
+        settings.javaScriptCanOpenWindowsAutomatically = true
+
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
-        // إخفاء سمة الـ WebView لضمان قبول جوجل للتعرف على الجلسات
+        // تعديل الـ User-Agent ليبدو كـ Chrome نقي دون سمات webview
         val defaultUserAgent = settings.userAgentString
         settings.userAgentString = defaultUserAgent.replace("; wv", "")
 
@@ -201,28 +207,72 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
 
-                // 1. فتح روابط تسجيل دخول جوجل في Google Custom Tabs للتعرف على حسابات الهاتف فوراً
-                if (url.contains("accounts.google.com") || url.contains("google.com/signin")) {
-                    val customTabsIntent = CustomTabsIntent.Builder()
-                        .setShowTitle(true)
-                        .build()
-                    customTabsIntent.launchUrl(this@MainActivity, Uri.parse(url))
-                    return true
-                }
-
-                // 2. الروابط الخارجية الأخرى (واتساب، الاتصال الهاتفي)
+                // فتح روابط الاتصال والواتساب في التطبيقات المخصصة لها
                 if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.startsWith("mailto:")) {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     startActivity(intent)
                     return true
                 }
 
+                // منع فتح متصفح خارجي لأي رابط داخل التطبيق أو روابط المصادقة
                 return false
             }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
-            // تفعيل إذن الموقع الجغرافي للخرائط تلقائياً
+            // فتح نوافذ تسجيل دخول جوجل داخل نافذة منبثقة داخل التطبيق نفسه دون الخروج لكروم
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                val dialog = Dialog(this@MainActivity)
+                dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+                val popupWebView = WebView(this@MainActivity)
+                popupWebView.settings.javaScriptEnabled = true
+                popupWebView.settings.domStorageEnabled = true
+                popupWebView.settings.userAgentString = settings.userAgentString
+
+                val cookieManagerPopup = CookieManager.getInstance()
+                cookieManagerPopup.setAcceptCookie(true)
+                cookieManagerPopup.setAcceptThirdPartyCookies(popupWebView, true)
+
+                popupWebView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                        val popupUrl = request?.url?.toString() ?: return false
+                        if (popupUrl.contains("ais-dev-pvgpazyr7qqyc4cetwc52r") || popupUrl.contains("run.app")) {
+                            dialog.dismiss()
+                            webView.loadUrl(popupUrl)
+                            return true
+                        }
+                        return false
+                    }
+
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        if (url?.contains("ais-dev-pvgpazyr7qqyc4cetwc52r") == true || url?.contains("run.app") == true) {
+                            dialog.dismiss()
+                            webView.loadUrl(url)
+                        }
+                    }
+                }
+
+                dialog.setContentView(popupWebView)
+                dialog.window?.setLayout(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                dialog.show()
+
+                val transport = resultMsg?.obj as? WebView.WebViewTransport
+                transport?.webView = popupWebView
+                resultMsg?.sendToTarget()
+                return true
+            }
+
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
                 callback: GeolocationPermissions.Callback?
@@ -230,7 +280,6 @@ class MainActivity : AppCompatActivity() {
                 callback?.invoke(origin, true, false)
             }
 
-            // تفعيل اختيار الصور عند الحاجة فقط دون طلب إذن مسبق
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
