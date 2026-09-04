@@ -22,6 +22,8 @@ import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.browser.customtabs.CustomTabColorSchemeParams
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
@@ -33,7 +35,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var customToastView: TextView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // الرابط الحي لتطبيق وصلني بورسعيد
+    // الرابط المباشر والحي لتطبيق وصلني بورسعيد
     private val appUrl = "https://ais-dev-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
 
     private val handler = Handler(Looper.getMainLooper())
@@ -97,7 +99,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // واجهة تواصل أندرويد مع صفحة الأوفلاين
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // عند العودة من مصادقة جوجل الخارجية التلقائية
+        val data = intent.data
+        if (data != null && data.toString().contains("run.app")) {
+            showLoading(true)
+            webView.loadUrl(data.toString())
+        }
+    }
+
     inner class AndroidBridge {
         @JavascriptInterface
         fun retryConnection() {
@@ -106,7 +117,6 @@ class MainActivity : AppCompatActivity() {
                     showLoading(true)
                     webView.loadUrl(appUrl)
                 } else {
-                    // رسالة تنبيه مخصصة بدون أي علامات أندرويد
                     showCustomNotification("لا زال الهاتف غير متصل بالإنترنت")
                     showOfflineScreen()
                 }
@@ -114,11 +124,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // إنشاء شاشة التحميل وشريط التنبيهات المخصص
     private fun createCustomViews() {
         val rootLayout = findViewById<ViewGroup>(android.R.id.content)
 
-        // 1. شاشة التحميل الكحلية لحجب شعارات جوجل الخارجية
         customLoadingOverlay = FrameLayout(this).apply {
             setBackgroundColor(0xFF0F172A.toInt())
             layoutParams = FrameLayout.LayoutParams(
@@ -151,9 +159,8 @@ class MainActivity : AppCompatActivity() {
             addView(innerLayout)
         }
 
-        // 2. شريط تنبيه مخصص فخم بدون أي أيقونات لنظام أندرويد
         customToastView = TextView(this).apply {
-            setBackgroundColor(0xEE1E293B.toInt()) // كحلي رمادي فاخر
+            setBackgroundColor(0xEE1E293B.toInt())
             setTextColor(0xFFF8FAFC.toInt())
             textSize = 14f
             setPadding(40, 24, 40, 24)
@@ -294,11 +301,6 @@ class MainActivity : AppCompatActivity() {
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
-        // تعريف هوية هاتف أندرويد حقيقي لكي يتعرف خادم جوجل على حسابات الهاتف المخزنة
-        // وتجنب جملة "ألا تمتلك هذا الكمبيوتر؟"
-        val chromeVersion = "122.0.0.0"
-        settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$chromeVersion Mobile Safari/537.36"
-
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
@@ -325,6 +327,23 @@ class MainActivity : AppCompatActivity() {
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
+
+                // عند فتح مصادقة جوجل: نفتح نافذة موثوقة من خدمات Google Play للتعرف على إيميلات الهاتف فوراً
+                if (url.contains("accounts.google.com") || url.contains("google.com/signin") || url.contains("google.com/o/oauth2")) {
+                    val colorScheme = CustomTabColorSchemeParams.Builder()
+                        .setToolbarColor(0xFF0F172A.toInt())
+                        .build()
+
+                    val customTabsIntent = CustomTabsIntent.Builder()
+                        .setDefaultColorSchemeParams(colorScheme)
+                        .setShowTitle(false)
+                        .setUrlBarHidingEnabled(true)
+                        .build()
+
+                    customTabsIntent.intent.setPackage("com.android.chrome")
+                    customTabsIntent.launchUrl(this@MainActivity, Uri.parse(url))
+                    return true
+                }
 
                 if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.startsWith("mailto:")) {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
