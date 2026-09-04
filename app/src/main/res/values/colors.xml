@@ -1,1 +1,4 @@
-
+<resources>
+    <color name="primary_lime">#9EF01A</color>
+    <color name="slate_dark">#0F172A</color>
+</resources>
