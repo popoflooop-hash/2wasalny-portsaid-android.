@@ -19,7 +19,6 @@ import android.webkit.*
 import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -31,9 +30,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private lateinit var customLoadingOverlay: FrameLayout
+    private lateinit var customToastView: TextView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // الرابط المباشر والحي لتطبيق وصلني بورسعيد
+    // الرابط الحي لتطبيق وصلني بورسعيد
     private val appUrl = "https://ais-dev-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
 
     private val handler = Handler(Looper.getMainLooper())
@@ -60,7 +60,7 @@ class MainActivity : AppCompatActivity() {
             geolocationCallback?.invoke(geolocationOrigin, true, false)
         } else {
             geolocationCallback?.invoke(geolocationOrigin, false, false)
-            Toast.makeText(this, "يرجى السماح بالموقع لتحديد مكانك على الخريطة", Toast.LENGTH_SHORT).show()
+            showCustomNotification("يرجى السماح بالموقع لتحديد مكانك على الخريطة")
         }
         geolocationCallback = null
         geolocationOrigin = null
@@ -74,7 +74,7 @@ class MainActivity : AppCompatActivity() {
         webView = findViewById(R.id.webView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
 
-        createCustomLoadingOverlay()
+        createCustomViews()
         setupWebView()
         setupBackNavigation()
 
@@ -97,6 +97,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // واجهة تواصل أندرويد مع صفحة الأوفلاين
     inner class AndroidBridge {
         @JavascriptInterface
         fun retryConnection() {
@@ -105,17 +106,21 @@ class MainActivity : AppCompatActivity() {
                     showLoading(true)
                     webView.loadUrl(appUrl)
                 } else {
-                    Toast.makeText(this@MainActivity, "لا زال الهاتف غير متصل بالإنترنت", Toast.LENGTH_SHORT).show()
+                    // رسالة تنبيه مخصصة بدون أي علامات أندرويد
+                    showCustomNotification("لا زال الهاتف غير متصل بالإنترنت")
                     showOfflineScreen()
                 }
             }
         }
     }
 
-    // شاشة تحميل فاخرة باللون الكحلي الداكن لمنع وميض شعار جوجل
-    private fun createCustomLoadingOverlay() {
+    // إنشاء شاشة التحميل وشريط التنبيهات المخصص
+    private fun createCustomViews() {
+        val rootLayout = findViewById<ViewGroup>(android.R.id.content)
+
+        // 1. شاشة التحميل الكحلية لحجب شعارات جوجل الخارجية
         customLoadingOverlay = FrameLayout(this).apply {
-            setBackgroundColor(0xFF0F172A.toInt()) // لون بورسعيد الكحلي الليلي
+            setBackgroundColor(0xFF0F172A.toInt())
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -130,7 +135,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             val progressBar = ProgressBar(this@MainActivity).apply {
-                indeterminateDrawable?.setTint(0xFF9EF01A.toInt()) // الأخضر الليموني
+                indeterminateDrawable?.setTint(0xFF9EF01A.toInt())
             }
 
             val text = TextView(this@MainActivity).apply {
@@ -146,11 +151,41 @@ class MainActivity : AppCompatActivity() {
             addView(innerLayout)
         }
 
-        val rootLayout = findViewById<ViewGroup>(android.R.id.content)
+        // 2. شريط تنبيه مخصص فخم بدون أي أيقونات لنظام أندرويد
+        customToastView = TextView(this).apply {
+            setBackgroundColor(0xEE1E293B.toInt()) // كحلي رمادي فاخر
+            setTextColor(0xFFF8FAFC.toInt())
+            textSize = 14f
+            setPadding(40, 24, 40, 24)
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            ).apply {
+                bottomMargin = 100
+            }
+            background = ContextCompat.getDrawable(this@MainActivity, android.R.drawable.dialog_holo_dark_frame)
+        }
+
         rootLayout.addView(customLoadingOverlay)
+        rootLayout.addView(customToastView)
     }
 
-    // تأخير إخفاء شاشة التحميل لمدة 1.8 ثانية لضمان اكتمال تحميل عناصر الصفحة واختفاء أي وميض
+    private fun showCustomNotification(message: String) {
+        customToastView.text = message
+        customToastView.alpha = 0f
+        customToastView.visibility = View.VISIBLE
+        customToastView.animate().alpha(1f).setDuration(250).start()
+
+        handler.postDelayed({
+            customToastView.animate().alpha(0f).setDuration(250).withEndAction {
+                customToastView.visibility = View.GONE
+            }.start()
+        }, 2500)
+    }
+
     private fun showLoading(show: Boolean) {
         if (show) {
             handler.removeCallbacksAndMessages(null)
@@ -164,7 +199,7 @@ class MainActivity : AppCompatActivity() {
                         customLoadingOverlay.visibility = View.GONE
                         customLoadingOverlay.alpha = 1f
                     }
-            }, 1800) // ثانية و 800 ميلي ثانية أمان كامل
+            }, 1800)
         }
     }
 
@@ -259,9 +294,10 @@ class MainActivity : AppCompatActivity() {
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
-        // إخفاء سمات المتصفحات لضمان العمل الصامت داخل التطبيق
-        val defaultUserAgent = settings.userAgentString
-        settings.userAgentString = defaultUserAgent.replace("; wv", "")
+        // تعريف هوية هاتف أندرويد حقيقي لكي يتعرف خادم جوجل على حسابات الهاتف المخزنة
+        // وتجنب جملة "ألا تمتلك هذا الكمبيوتر؟"
+        val chromeVersion = "122.0.0.0"
+        settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$chromeVersion Mobile Safari/537.36"
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -274,7 +310,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 swipeRefreshLayout.isRefreshing = false
-                showLoading(false) // سيتم الإخفاء بعد التأخير الذكي لحجب وميض جوجل
+                showLoading(false)
             }
 
             override fun onReceivedError(
@@ -287,18 +323,15 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // منع الخروج إلى Chrome نهائياً وحظر شريط Custom Tabs تماماً
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
 
-                // الروابط الخارجية الأساسية فقط
                 if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.startsWith("mailto:")) {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     startActivity(intent)
                     return true
                 }
 
-                // فتح كل شيء داخل شاشة التطبيق الأصلية Full Screen
                 return false
             }
         }
