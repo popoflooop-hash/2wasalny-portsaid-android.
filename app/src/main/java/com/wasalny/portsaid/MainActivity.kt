@@ -2,17 +2,20 @@ package com.wasalny.portsaid
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Message
 import android.webkit.*
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
@@ -22,7 +25,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // الرابط المباشر والحي لتطبيق وصلني بورسعيد
+    // الرابط المباشر لتطبيق وصلني بورسعيد
     private val appUrl = "https://ais-dev-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
 
     private val filePickerLauncher = registerForActivityResult(
@@ -40,7 +43,7 @@ class MainActivity : AppCompatActivity() {
     ) { permissions ->
         val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
         if (!fineLocationGranted) {
-            Toast.makeText(this, "يرجى تفعيل إذن الموقع لرؤية خريطة ورادار بورسعيد", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "يرجى تفعيل إذن الموقع لرؤية خريطة ورادار بورسعيد بدقة", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -58,10 +61,89 @@ class MainActivity : AppCompatActivity() {
 
         swipeRefreshLayout.setColorSchemeColors(getColor(R.color.primary_lime))
         swipeRefreshLayout.setOnRefreshListener {
-            webView.reload()
+            if (isNetworkAvailable()) {
+                webView.loadUrl(appUrl)
+            } else {
+                showOfflineScreen()
+                swipeRefreshLayout.isRefreshing = false
+            }
         }
 
-        webView.loadUrl(appUrl)
+        if (isNetworkAvailable()) {
+            webView.loadUrl(appUrl)
+        } else {
+            showOfflineScreen()
+        }
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    private fun showOfflineScreen() {
+        val offlineHtml = """
+            <!DOCTYPE html>
+            <html dir="rtl" lang="ar">
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+                <style>
+                    body {
+                        margin: 0;
+                        padding: 0;
+                        background: #0f172a;
+                        color: #f8fafc;
+                        font-family: sans-serif;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        height: 100vh;
+                        text-align: center;
+                        box-sizing: border-box;
+                        padding: 24px;
+                    }
+                    .icon {
+                        font-size: 64px;
+                        margin-bottom: 16px;
+                    }
+                    h1 {
+                        font-size: 22px;
+                        margin: 0 0 10px 0;
+                        color: #ffffff;
+                    }
+                    p {
+                        font-size: 15px;
+                        color: #94a3b8;
+                        margin: 0 0 28px 0;
+                        line-height: 1.6;
+                    }
+                    .btn {
+                        background: #9ef01a;
+                        color: #0f172a;
+                        font-weight: bold;
+                        border: none;
+                        padding: 14px 28px;
+                        border-radius: 9999px;
+                        font-size: 16px;
+                        cursor: pointer;
+                        box-shadow: 0 10px 15px -3px rgba(158, 240, 26, 0.3);
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="icon">📡</div>
+                <h1>لا يوجد اتصال بالإنترنت</h1>
+                <p>يحتاج تطبيق وصلني بورسعيد للاتصال بالشبكة لتحديث الرادار والرحلات والتسجيل.</p>
+                <button class="btn" onclick="location.reload()">إعادة المحاولة الآن</button>
+            </body>
+            </html>
+        """.trimIndent()
+
+        webView.loadDataWithBaseURL(null, offlineHtml, "text/html", "UTF-8", null)
     }
 
     private fun checkAndRequestPermissions() {
@@ -98,16 +180,11 @@ class MainActivity : AppCompatActivity() {
         settings.loadWithOverviewMode = true
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-        // 1. تفعيل النوافذ المتعددة والمنبثقة اللازمة لتسجيل دخول جوجل (Google Auth Popup)
-        settings.setSupportMultipleWindows(true)
-        settings.javaScriptCanOpenWindowsAutomatically = true
-
-        // 2. تفعيل الكوكيز والـ Third-Party Cookies للحفاظ على جلسة تسجيل الدخول
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
-        // 3. تعديل هوية المتصفح (User-Agent) للتعرف على حساب جوجل ومنع حظر الـ WebView
+        // إخفاء سمة الـ WebView لضمان قبول جوجل للتعرف على الجلسات
         val defaultUserAgent = settings.userAgentString
         settings.userAgentString = defaultUserAgent.replace("; wv", "")
 
@@ -117,55 +194,40 @@ class MainActivity : AppCompatActivity() {
                 swipeRefreshLayout.isRefreshing = false
             }
 
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    showOfflineScreen()
+                }
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
 
-                // الروابط الخارجية (واتساب، الاتصال، إلخ)
+                // 1. فتح روابط تسجيل دخول جوجل في Google Custom Tabs للتعرف على حسابات الهاتف فوراً
+                if (url.contains("accounts.google.com") || url.contains("google.com/signin")) {
+                    val customTabsIntent = CustomTabsIntent.Builder()
+                        .setShowTitle(true)
+                        .build()
+                    customTabsIntent.launchUrl(this@MainActivity, Uri.parse(url))
+                    return true
+                }
+
+                // 2. الروابط الخارجية الأخرى (واتساب، هاتف)
                 if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.startsWith("mailto:")) {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     startActivity(intent)
                     return true
                 }
+
                 return false
             }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
-            // معالجة النافذة المنبثقة الخاصة بحسابات جوجل
-            override fun onCreateWindow(
-                view: WebView?,
-                isDialog: Boolean,
-                isUserGesture: Boolean,
-                resultMsg: Message?
-            ): Boolean {
-                val newWebView = WebView(this@MainActivity)
-                newWebView.settings.javaScriptEnabled = true
-                newWebView.settings.domStorageEnabled = true
-                newWebView.settings.userAgentString = settings.userAgentString
-
-                val cookieManagerPopup = CookieManager.getInstance()
-                cookieManagerPopup.setAcceptCookie(true)
-                cookieManagerPopup.setAcceptThirdPartyCookies(newWebView, true)
-
-                newWebView.webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                        val popupUrl = request?.url?.toString() ?: return false
-                        // إذا كانت نتيجة تسجيل الدخول تعود للتطبيق الأصلي
-                        if (popupUrl.contains("ais-dev-pvgpazyr7qqyc4cetwc52r") || popupUrl.contains("run.app")) {
-                            webView.loadUrl(popupUrl)
-                            return true
-                        }
-                        return false
-                    }
-                }
-
-                val transport = resultMsg?.obj as? WebView.WebViewTransport
-                transport?.webView = newWebView
-                resultMsg?.sendToTarget()
-                return true
-            }
-
-            // إذن الموقع الجغرافي
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
                 callback: GeolocationPermissions.Callback?
@@ -173,7 +235,6 @@ class MainActivity : AppCompatActivity() {
                 callback?.invoke(origin, true, false)
             }
 
-            // رفع صور التوثيق
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
