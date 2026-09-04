@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.webkit.*
 import android.widget.Toast
@@ -25,9 +24,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // الرابط المباشر لتطبيق وصلني بورسعيد
+    // الرابط المباشر والحي لتطبيق وصلني بورسعيد
     private val appUrl = "https://ais-dev-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
 
+    // معالج رفع صور توثيق الكباتن والسيارة والهوية (يفتح فقط عند ضغط المستخدم)
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -38,12 +38,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val requestPermissionsLauncher = registerForActivityResult(
+    // طلب إذن الموقع الجغرافي فقط بدقة لعرض الخريطة ورادار الرحلات
+    private val requestLocationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
         if (!fineLocationGranted) {
-            Toast.makeText(this, "يرجى تفعيل إذن الموقع لرؤية خريطة ورادار بورسعيد بدقة", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "يرجى السماح بالموقع لعرض رادار وكباتن بورسعيد حولك", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -55,10 +56,11 @@ class MainActivity : AppCompatActivity() {
         webView = findViewById(R.id.webView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
 
-        checkAndRequestPermissions()
+        checkAndRequestLocationPermission()
         setupWebView()
         setupBackNavigation()
 
+        // لون السحب للتحديث بلون التطبيق المميز
         swipeRefreshLayout.setColorSchemeColors(getColor(R.color.primary_lime))
         swipeRefreshLayout.setOnRefreshListener {
             if (isNetworkAvailable()) {
@@ -73,6 +75,19 @@ class MainActivity : AppCompatActivity() {
             webView.loadUrl(appUrl)
         } else {
             showOfflineScreen()
+        }
+    }
+
+    private fun checkAndRequestLocationPermission() {
+        val neededPermissions = arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ).filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (neededPermissions.isNotEmpty()) {
+            requestLocationPermissionLauncher.launch(neededPermissions.toTypedArray())
         }
     }
 
@@ -96,7 +111,7 @@ class MainActivity : AppCompatActivity() {
                         padding: 0;
                         background: #0f172a;
                         color: #f8fafc;
-                        font-family: sans-serif;
+                        font-family: system-ui, -apple-system, sans-serif;
                         display: flex;
                         flex-direction: column;
                         align-items: center;
@@ -144,27 +159,6 @@ class MainActivity : AppCompatActivity() {
         """.trimIndent()
 
         webView.loadDataWithBaseURL(null, offlineHtml, "text/html", "UTF-8", null)
-    }
-
-    private fun checkAndRequestPermissions() {
-        val permissions = mutableListOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.CAMERA
-        )
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-        } else {
-            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
-        }
-
-        val neededPermissions = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-
-        if (neededPermissions.isNotEmpty()) {
-            requestPermissionsLauncher.launch(neededPermissions.toTypedArray())
-        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -216,7 +210,7 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
 
-                // 2. الروابط الخارجية الأخرى (واتساب، هاتف)
+                // 2. الروابط الخارجية الأخرى (واتساب، الاتصال الهاتفي)
                 if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.startsWith("mailto:")) {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     startActivity(intent)
@@ -228,6 +222,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webChromeClient = object : WebChromeClient() {
+            // تفعيل إذن الموقع الجغرافي للخرائط تلقائياً
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
                 callback: GeolocationPermissions.Callback?
@@ -235,6 +230,7 @@ class MainActivity : AppCompatActivity() {
                 callback?.invoke(origin, true, false)
             }
 
+            // تفعيل اختيار الصور عند الحاجة فقط دون طلب إذن مسبق
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
