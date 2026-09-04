@@ -9,9 +9,10 @@ import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.*
 import android.widget.FrameLayout
 import android.widget.ProgressBar
@@ -125,7 +126,7 @@ class MainActivity : AppCompatActivity() {
                 layoutParams = FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT,
-                    android.view.Gravity.CENTER
+                    Gravity.CENTER
                 )
             }
 
@@ -138,7 +139,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(0xFFF8FAFC.toInt())
                 textSize = 16f
                 setPadding(0, 140, 0, 0)
-                gravity = android.view.Gravity.CENTER
+                gravity = Gravity.CENTER
             }
 
             innerLayout.addView(progressBar)
