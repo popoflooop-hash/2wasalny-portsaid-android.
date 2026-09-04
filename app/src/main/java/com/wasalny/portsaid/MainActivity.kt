@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -22,10 +23,15 @@ import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.browser.customtabs.CustomTabColorSchemeParams
-import androidx.browser.customtabs.CustomTabsIntent
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -35,9 +41,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var customToastView: TextView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // الرابط المباشر والحي لتطبيق وصلني بورسعيد
-    private val appUrl = "https://ais-dev-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
+    // Client ID الخاص بجوجل من مشروعك في Google Cloud Console / Firebase
+    private val googleClientId = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
 
+    private val appUrl = "https://ais-dev-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
     private val handler = Handler(Looper.getMainLooper())
 
     private val filePickerLauncher = registerForActivityResult(
@@ -99,16 +106,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        // عند العودة من مصادقة جوجل الخارجية التلقائية
-        val data = intent.data
-        if (data != null && data.toString().contains("run.app")) {
-            showLoading(true)
-            webView.loadUrl(data.toString())
-        }
-    }
-
+    // جسر التواصل بين الـ JavaScript والـ Android لطلب تسجيل الدخول الاحترافي
     inner class AndroidBridge {
         @JavascriptInterface
         fun retryConnection() {
@@ -120,6 +118,44 @@ class MainActivity : AppCompatActivity() {
                     showCustomNotification("لا زال الهاتف غير متصل بالإنترنت")
                     showOfflineScreen()
                 }
+            }
+        }
+
+        @JavascriptInterface
+        fun triggerGoogleSignIn() {
+            runOnUiThread {
+                launchNativeGoogleSignIn()
+            }
+        }
+    }
+
+    // استدعاء نافذة جوجل الرسمية بضغطة واحدة (One-Tap Bottom Sheet)
+    private fun launchNativeGoogleSignIn() {
+        val credentialManager = CredentialManager.create(this)
+
+        val googleIdOption = GetGoogleIdOption.Builder()
+            .setFilterByAuthorizedAccounts(false)
+            .setServerClientId(googleClientId)
+            .setAutoSelectEnabled(true)
+            .build()
+
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(googleIdOption)
+            .build()
+
+        lifecycleScope.launch {
+            try {
+                val result = credentialManager.getCredential(request = request, context = this@MainActivity)
+                val credential = result.credential
+                if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                    val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                    val idToken = googleIdTokenCredential.idToken
+                    
+                    // إرسال التوكن للـ WebView لإكمال الدخول بنجاح
+                    webView.evaluateJavascript("javascript:handleGoogleToken('$idToken');", null)
+                }
+            } catch (e: GetCredentialException) {
+                Log.e("GoogleSignIn", "فشل تسجيل الدخول: ${e.message}")
             }
         }
     }
@@ -242,30 +278,13 @@ class MainActivity : AppCompatActivity() {
                         box-sizing: border-box;
                         padding: 24px;
                     }
-                    .icon {
-                        font-size: 64px;
-                        margin-bottom: 16px;
-                    }
-                    h1 {
-                        font-size: 22px;
-                        margin: 0 0 10px 0;
-                        color: #ffffff;
-                    }
-                    p {
-                        font-size: 15px;
-                        color: #94a3b8;
-                        margin: 0 0 28px 0;
-                        line-height: 1.6;
-                    }
+                    .icon { font-size: 64px; margin-bottom: 16px; }
+                    h1 { font-size: 22px; margin: 0 0 10px 0; color: #ffffff; }
+                    p { font-size: 15px; color: #94a3b8; margin: 0 0 28px 0; line-height: 1.6; }
                     .btn {
-                        background: #9ef01a;
-                        color: #0f172a;
-                        font-weight: bold;
-                        border: none;
-                        padding: 14px 28px;
-                        border-radius: 9999px;
-                        font-size: 16px;
-                        cursor: pointer;
+                        background: #9ef01a; color: #0f172a; font-weight: bold;
+                        border: none; padding: 14px 28px; border-radius: 9999px;
+                        font-size: 16px; cursor: pointer;
                         box-shadow: 0 10px 15px -3px rgba(158, 240, 26, 0.3);
                     }
                 </style>
@@ -328,20 +347,9 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
 
-                // عند فتح مصادقة جوجل: نفتح نافذة موثوقة من خدمات Google Play للتعرف على إيميلات الهاتف فوراً
-                if (url.contains("accounts.google.com") || url.contains("google.com/signin") || url.contains("google.com/o/oauth2")) {
-                    val colorScheme = CustomTabColorSchemeParams.Builder()
-                        .setToolbarColor(0xFF0F172A.toInt())
-                        .build()
-
-                    val customTabsIntent = CustomTabsIntent.Builder()
-                        .setDefaultColorSchemeParams(colorScheme)
-                        .setShowTitle(false)
-                        .setUrlBarHidingEnabled(true)
-                        .build()
-
-                    customTabsIntent.intent.setPackage("com.android.chrome")
-                    customTabsIntent.launchUrl(this@MainActivity, Uri.parse(url))
+                // عند الضغط على زر تسجيل جوجل في الويب، يتم تحويل الطلب للـ Native Sign-In
+                if (url.contains("accounts.google.com") || url.contains("google.com/signin")) {
+                    launchNativeGoogleSignIn()
                     return true
                 }
 
