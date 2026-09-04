@@ -10,6 +10,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -21,8 +23,6 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.browser.customtabs.CustomTabColorSchemeParams
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
@@ -33,8 +33,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var customLoadingOverlay: FrameLayout
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // الرابط المباشر لتطبيق وصلني بورسعيد
+    // الرابط المباشر والحي لتطبيق وصلني بورسعيد
     private val appUrl = "https://ais-dev-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
+
+    private val handler = Handler(Looper.getMainLooper())
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -46,7 +48,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // معالج إذن الموقع (يتم تفعيله فقط عندما يطلبه المستخدم من داخل التطبيق)
     private var geolocationCallback: GeolocationPermissions.Callback? = null
     private var geolocationOrigin: String? = null
 
@@ -77,11 +78,10 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         setupBackNavigation()
 
-        // ملاحظة هامة: تم إلغاء طلب إذن الموقع من هنا تماماً حتى لا يزعج المستخدم عند الفتح
-
         swipeRefreshLayout.setColorSchemeColors(getColor(R.color.primary_lime))
         swipeRefreshLayout.setOnRefreshListener {
             if (isNetworkAvailable()) {
+                showLoading(true)
                 webView.loadUrl(appUrl)
             } else {
                 showOfflineScreen()
@@ -97,7 +97,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // واجهة تواصل آمنة بين أزرار الـ HTML وكود الأندرويد الأصلي لإعادة المحاولة الحقيقية
     inner class AndroidBridge {
         @JavascriptInterface
         fun retryConnection() {
@@ -113,7 +112,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // شاشة تحميل بورسعيد الفخمة لمنع ظهور أي شعارات خارجية
+    // شاشة تحميل فاخرة باللون الكحلي الداكن لمنع وميض شعار جوجل
     private fun createCustomLoadingOverlay() {
         customLoadingOverlay = FrameLayout(this).apply {
             setBackgroundColor(0xFF0F172A.toInt()) // لون بورسعيد الكحلي الليلي
@@ -135,10 +134,10 @@ class MainActivity : AppCompatActivity() {
             }
 
             val text = TextView(this@MainActivity).apply {
-                text = "وصلني بورسعيد..."
+                text = "وصلني بورسعيد\nجاري الاتصال بالرادار..."
                 setTextColor(0xFFF8FAFC.toInt())
-                textSize = 16f
-                setPadding(0, 140, 0, 0)
+                textSize = 15f
+                setPadding(0, 150, 0, 0)
                 gravity = Gravity.CENTER
             }
 
@@ -151,8 +150,22 @@ class MainActivity : AppCompatActivity() {
         rootLayout.addView(customLoadingOverlay)
     }
 
+    // تأخير إخفاء شاشة التحميل لمدة 1.8 ثانية لضمان اكتمال تحميل عناصر الصفحة واختفاء أي وميض
     private fun showLoading(show: Boolean) {
-        customLoadingOverlay.visibility = if (show) View.VISIBLE else View.GONE
+        if (show) {
+            handler.removeCallbacksAndMessages(null)
+            customLoadingOverlay.visibility = View.VISIBLE
+        } else {
+            handler.postDelayed({
+                customLoadingOverlay.animate()
+                    .alpha(0f)
+                    .setDuration(300)
+                    .withEndAction {
+                        customLoadingOverlay.visibility = View.GONE
+                        customLoadingOverlay.alpha = 1f
+                    }
+            }, 1800) // ثانية و 800 ميلي ثانية أمان كامل
+        }
     }
 
     private fun isNetworkAvailable(): Boolean {
@@ -163,7 +176,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showOfflineScreen() {
-        showLoading(false)
+        handler.removeCallbacksAndMessages(null)
+        customLoadingOverlay.visibility = View.GONE
         val offlineHtml = """
             <!DOCTYPE html>
             <html dir="rtl" lang="ar">
@@ -239,13 +253,13 @@ class MainActivity : AppCompatActivity() {
         settings.loadWithOverviewMode = true
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-        // ربط نافذة أندرويد للتواصل مع كود صفحة الأوفلاين
         webView.addJavascriptInterface(AndroidBridge(), "AndroidApp")
 
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
+        // إخفاء سمات المتصفحات لضمان العمل الصامت داخل التطبيق
         val defaultUserAgent = settings.userAgentString
         settings.userAgentString = defaultUserAgent.replace("; wv", "")
 
@@ -260,7 +274,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 swipeRefreshLayout.isRefreshing = false
-                showLoading(false)
+                showLoading(false) // سيتم الإخفاء بعد التأخير الذكي لحجب وميض جوجل
             }
 
             override fun onReceivedError(
@@ -273,38 +287,23 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            // منع الخروج إلى Chrome نهائياً وحظر شريط Custom Tabs تماماً
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
 
-                // عند الضغط على تسجيل الدخول بجوجل: فتح نافذة مخصصة بلون التطبيق للتعرف على حسابات الهاتف تلقائياً
-                if (url.contains("accounts.google.com") || url.contains("google.com/signin")) {
-                    val colorScheme = CustomTabColorSchemeParams.Builder()
-                        .setToolbarColor(0xFF0F172A.toInt())
-                        .build()
-
-                    val customTabsIntent = CustomTabsIntent.Builder()
-                        .setDefaultColorSchemeParams(colorScheme)
-                        .setShowTitle(false) // إخفاء العنوان لمنع ظهور شكل المتصفح
-                        .setUrlBarHidingEnabled(true) // إخفاء شريط الروابط لملء الشاشة
-                        .build()
-
-                    customTabsIntent.launchUrl(this@MainActivity, Uri.parse(url))
-                    return true
-                }
-
-                // الروابط الخارجية (واتساب، هاتف)
+                // الروابط الخارجية الأساسية فقط
                 if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.startsWith("mailto:")) {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     startActivity(intent)
                     return true
                 }
 
+                // فتح كل شيء داخل شاشة التطبيق الأصلية Full Screen
                 return false
             }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
-            // طلب إذن الموقع الجغرافي فقط عند احتياج الخريطة أو طلب الرحلة
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
                 callback: GeolocationPermissions.Callback?
