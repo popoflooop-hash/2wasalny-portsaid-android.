@@ -1,9 +1,4 @@
 plugins {
-    alias(libs.plugins.android.application) apply false
-}
-
-// إعدادات بناء تطبيق الأندرويد
-plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
