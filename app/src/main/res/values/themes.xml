@@ -1,8 +1,11 @@
-
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- الثيم الأساسي للتطبيق بدون شريط عنوان علوي ليعمل ملء الشاشة -->
     <style name="Theme.WasalnyPortSaid" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="android:statusBarColor">#0F172A</item>
-        <item name="android:navigationBarColor">#0F172A</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="colorPrimary">#10b981</item>
+        <item name="colorPrimaryVariant">#059669</item>
+        <item name="colorOnPrimary">#ffffff</item>
+        <item name="android:statusBarColor">#0f172a</item>
+        <item name="android:navigationBarColor">#0f172a</item>
+        <item name="android:windowBackground">#0f172a</item>
     </style>
 </resources>
