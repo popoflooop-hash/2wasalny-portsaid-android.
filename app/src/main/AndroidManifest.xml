@@ -20,13 +20,41 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
+            
+            <!-- مشغل التطبيق الرئيسي -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Deep Link للعودة التلقائية للتطبيق بعد نجاح تسجيل الدخول من جوجل -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                
+                <data
+                    android:scheme="wasalny"
+                    android:host="auth" />
+            </intent-filter>
+
+            <!-- دعم روابط الـ App URL لضمان العودة الآمنة عبر https -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                
+                <data
+                    android:scheme="https"
+                    android:host="ais-pre-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
+                    android:pathPrefix="/auth/callback" />
+            </intent-filter>
+
         </activity>
+
     </application>
 
 </manifest>
