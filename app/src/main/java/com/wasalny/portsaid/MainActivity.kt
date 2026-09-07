@@ -1,7 +1,8 @@
 package com.wasalny.portsaid
 
 import android.annotation.SuppressLint
-import android.graphics.Bitmap
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.webkit.CookieManager
@@ -18,15 +19,9 @@ import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.credentials.CredentialManager
-import androidx.credentials.CustomCredential
-import androidx.credentials.GetCredentialRequest
-import androidx.lifecycle.lifecycleScope
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.content.ContextCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -34,18 +29,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var splashOverlay: FrameLayout
     private lateinit var progressBar: ProgressBar
-    private lateinit var credentialManager: CredentialManager
 
-    private val WEB_CLIENT_ID = "508562005255-pntg0mj2fq5457kpairniveoq68vr4df.apps.googleusercontent.com"
     private val APP_URL = "https://ais-pre-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // إخفاء الشريط العلوي لتشغيل التطبيق شاشة كاملة
         supportActionBar?.hide()
-        credentialManager = CredentialManager.create(this)
 
         webView = findViewById(R.id.webView)
         swipeRefresh = findViewById(R.id.swipeRefresh)
@@ -58,7 +50,30 @@ class MainActivity : AppCompatActivity() {
         setupSwipeRefresh()
         setupBackNavigation()
 
-        webView.loadUrl(APP_URL)
+        handleIntent(intent)
+
+        if (savedInstanceState == null) {
+            webView.loadUrl(APP_URL)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    // استقبال العودة من نافذة جوجل (Deep Link)
+    private fun handleIntent(intent: Intent?) {
+        val uri: Uri? = intent?.data
+        if (uri != null) {
+            if (uri.scheme == "wasalny" && uri.host == "auth") {
+                // إعادة تحميل الـ WebView لتحديث حالة تسجيل الدخول والكوكيز
+                webView.evaluateJavascript("window.location.reload();", null)
+            } else if (uri.scheme == "https" && uri.path?.startsWith("/auth/callback") == true) {
+                webView.loadUrl(uri.toString())
+            }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -72,11 +87,7 @@ class MainActivity : AppCompatActivity() {
         settings.loadWithOverviewMode = true
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-        // إزالة تعريف WebView المقيد ليتعرف جوجل على الحسابات بسهولة
-        val defaultUserAgent = settings.userAgentString
-        settings.userAgentString = defaultUserAgent.replace("; wv", "").replace("Version/4.0 ", "")
-
-        // تفعيل ملفات تعريف الارتباط والكوكيز
+        // تفعيل الكوكيز الرسمية
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
@@ -93,12 +104,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webViewClient = object : WebViewClient() {
+            // تحويل روابط مصادقة جوجل تلقائياً للواجهة الآمنة Custom Tabs
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                val url = request?.url?.toString() ?: return false
+
+                if (url.contains("accounts.google.com") || url.contains("firebaseapp.com/__/auth/handler")) {
+                    openSecureCustomTab(url)
+                    return true
+                }
+                return false
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 swipeRefresh.isRefreshing = false
                 view?.postDelayed({
                     hideSplashScreen()
-                }, 1000)
+                }, 600)
             }
 
             override fun onReceivedError(
@@ -109,6 +134,21 @@ class MainActivity : AppCompatActivity() {
                 super.onReceivedError(view, request, error)
                 swipeRefresh.isRefreshing = false
             }
+        }
+    }
+
+    // فتح شاشة المصادقة عبر Chrome Custom Tabs المعتمدة قانونياً من جوجل
+    private fun openSecureCustomTab(url: String) {
+        try {
+            val customTabsIntent = CustomTabsIntent.Builder()
+                .setShowTitle(true)
+                .setToolbarColor(ContextCompat.getColor(this, android.R.color.white))
+                .build()
+
+            customTabsIntent.launchUrl(this, Uri.parse(url))
+        } catch (e: Exception) {
+            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            startActivity(browserIntent)
         }
     }
 
@@ -136,58 +176,11 @@ class MainActivity : AppCompatActivity() {
         if (splashOverlay.visibility == View.VISIBLE) {
             splashOverlay.animate()
                 .alpha(0f)
-                .setDuration(300)
+                .setDuration(250)
                 .withEndAction {
                     splashOverlay.visibility = View.GONE
                 }
                 .start()
-        }
-    }
-
-    // استدعاء نافذة جوجل الرسمية لاختيار الحساب
-    fun launchGoogleSignIn() {
-        lifecycleScope.launch(Dispatchers.Main) {
-            try {
-                val googleIdOption = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setServerClientId(WEB_CLIENT_ID)
-                    .setAutoSelectEnabled(false)
-                    .build()
-
-                val request = GetCredentialRequest.Builder()
-                    .addCredentialOption(googleIdOption)
-                    .build()
-
-                val result = credentialManager.getCredential(
-                    request = request,
-                    context = this@MainActivity
-                )
-
-                val credential = result.credential
-                if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                    val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data)
-                    passTokenToWeb(googleIdToken.idToken)
-                }
-            } catch (e: Exception) {
-                // إذا لم يتم الاختيار أو حدث تعذر في الأندرويد، نطلب من الويب المتابعة دون تجميد
-                runOnUiThread {
-                    webView.evaluateJavascript("window.onNativeAuthFailed && window.onNativeAuthFailed();", null)
-                }
-            }
-        }
-    }
-
-    private fun passTokenToWeb(token: String) {
-        runOnUiThread {
-            webView.evaluateJavascript(
-                """
-                if (window.handleGoogleToken) {
-                    window.handleGoogleToken('$token');
-                } else {
-                    window._pendingGoogleToken = '$token';
-                }
-                """.trimIndent(), null
-            )
         }
     }
 
@@ -201,9 +194,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun requestGoogleSignIn() {
-            runOnUiThread {
-                launchGoogleSignIn()
-            }
+            // يتم فتح التوجيه الآمن للـ Custom Tabs تلقائياً عند الضغط
         }
 
         @JavascriptInterface
