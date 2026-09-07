@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Message
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
@@ -63,14 +64,14 @@ class MainActivity : AppCompatActivity() {
         handleIntent(intent)
     }
 
-    // استقبال العودة من نافذة جوجل (Deep Link)
+    // استقبال العودة من نافذة جوجل بعد المصادقة الناجحة (Deep Link)
     private fun handleIntent(intent: Intent?) {
         val uri: Uri? = intent?.data
         if (uri != null) {
             if (uri.scheme == "wasalny" && uri.host == "auth") {
-                // إعادة تحميل الـ WebView لتحديث حالة تسجيل الدخول والكوكيز
+                // إعادة تحميل الصفحة لتطبيق الكوكيز والجلسة
                 webView.evaluateJavascript("window.location.reload();", null)
-            } else if (uri.scheme == "https" && uri.path?.startsWith("/auth/callback") == true) {
+            } else if (uri.scheme == "https" && uri.host == "ais-pre-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app") {
                 webView.loadUrl(uri.toString())
             }
         }
@@ -87,7 +88,11 @@ class MainActivity : AppCompatActivity() {
         settings.loadWithOverviewMode = true
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-        // تفعيل الكوكيز الرسمية
+        // تفعيل دعم النوافذ المنبثقة لمصادقة OAuth
+        settings.setSupportMultipleWindows(true)
+        settings.javaScriptCanOpenWindowsAutomatically = true
+
+        // تفعيل الكوكيز الرسمية والطرف الثالث للمصادقة
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
@@ -101,17 +106,45 @@ class MainActivity : AppCompatActivity() {
             ) {
                 callback?.invoke(origin, true, false)
             }
+
+            // التقاط النوافذ المنبثقة لمصادقة Google وتحويلها تلقائياً لـ Chrome Custom Tabs الآمنة
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                val tempWebView = WebView(this@MainActivity)
+                tempWebView.settings.javaScriptEnabled = true
+                tempWebView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(
+                        subView: WebView?,
+                        request: WebResourceRequest?
+                    ): Boolean {
+                        val popupUrl = request?.url?.toString() ?: return false
+                        openSecureCustomTab(popupUrl)
+                        return true
+                    }
+                }
+
+                val transport = resultMsg?.obj as? WebView.WebViewTransport
+                transport?.webView = tempWebView
+                resultMsg?.sendToTarget()
+                return true
+            }
         }
 
         webView.webViewClient = object : WebViewClient() {
-            // تحويل روابط مصادقة جوجل تلقائياً للواجهة الآمنة Custom Tabs
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
 
-                if (url.contains("accounts.google.com") || url.contains("firebaseapp.com/__/auth/handler")) {
+                // إذا كان الرابط يخص مصادقة جوجل أو فايربيز، يتم فتحه في نافذة كروم الآمنة
+                if (url.contains("accounts.google.com") || 
+                    url.contains("firebaseapp.com/__/auth/handler") ||
+                    url.contains("google.com/accounts")) {
                     openSecureCustomTab(url)
                     return true
                 }
@@ -137,18 +170,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // فتح شاشة المصادقة عبر Chrome Custom Tabs المعتمدة قانونياً من جوجل
-    private fun openSecureCustomTab(url: String) {
-        try {
-            val customTabsIntent = CustomTabsIntent.Builder()
-                .setShowTitle(true)
-                .setToolbarColor(ContextCompat.getColor(this, android.R.color.white))
-                .build()
+    // فتح شاشة المصادقة عبر Chrome Custom Tabs المعتمدة قانونياً ورسمياً من Google Play
+    fun openSecureCustomTab(url: String) {
+        runOnUiThread {
+            try {
+                val customTabsIntent = CustomTabsIntent.Builder()
+                    .setShowTitle(true)
+                    .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+                    .setToolbarColor(ContextCompat.getColor(this, android.R.color.white))
+                    .build()
 
-            customTabsIntent.launchUrl(this, Uri.parse(url))
-        } catch (e: Exception) {
-            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            startActivity(browserIntent)
+                customTabsIntent.launchUrl(this, Uri.parse(url))
+            } catch (e: Exception) {
+                // في حال عدم توفر متصفح كروم، الفتح عبر المتصفح الافتراضي للجهاز
+                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                startActivity(browserIntent)
+            }
         }
     }
 
@@ -192,9 +229,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // استدعاء Chrome Custom Tabs فوراً عند النقر على زر جوجل في تطبيق الويب
         @JavascriptInterface
         fun requestGoogleSignIn() {
-            // يتم فتح التوجيه الآمن للـ Custom Tabs تلقائياً عند الضغط
+            runOnUiThread {
+                // فتح صفحة التوجيه الرسمية المباشرة لـ Google Auth
+                val googleAuthUrl = "$APP_URL/#/login?mode=cct"
+                openSecureCustomTab(googleAuthUrl)
+            }
         }
 
         @JavascriptInterface
