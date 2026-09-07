@@ -1,4 +1,36 @@
-<!-- Deep Link للعودة التلقائية للتطبيق بعد نجاح تسجيل الدخول من جوجل -->
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.wasalny.portsaid">
+
+    <!-- الصلاحيات الأساسية للإنترنت وتحديد الموقع -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="وصلني بورسعيد"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.WasalnyPortSaid"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize">
+            
+            <!-- مشغل التطبيق الرئيسي -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Deep Link للعودة التلقائية للتطبيق بعد نجاح تسجيل الدخول من جوجل -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -10,7 +42,7 @@
             </intent-filter>
 
             <!-- دعم روابط الـ App URL لضمان العودة الآمنة عبر https -->
-            <intent-filter>
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -19,3 +51,9 @@
                     android:scheme="https"
                     android:host="ais-pre-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app" />
             </intent-filter>
+
+        </activity>
+
+    </application>
+
+</manifest>
