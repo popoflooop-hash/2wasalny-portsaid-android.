@@ -21,14 +21,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
-import androidx.credentials.exceptions.GetCredentialException
 import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -38,22 +36,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var credentialManager: CredentialManager
 
-    // Web Client ID الصحيح الخاص بمشروع Firebase لهذا التطبيق
     private val WEB_CLIENT_ID = "508562005255-pntg0mj2fq5457kpairniveoq68vr4df.apps.googleusercontent.com"
-
-    // الرابط المستقر المباشر للتطبيق
     private val APP_URL = "https://ais-pre-pvgpazyr7qqyc4cetwc52r-283597327008.europe-west1.run.app"
-
-    private var isAppReadyReceived = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // إخفاء الـ ActionBar إن وجد ليعمل التطبيق ملء الشاشة
         supportActionBar?.hide()
-
         credentialManager = CredentialManager.create(this)
 
         webView = findViewById(R.id.webView)
@@ -61,38 +52,35 @@ class MainActivity : AppCompatActivity() {
         splashOverlay = findViewById(R.id.splashOverlay)
         progressBar = findViewById(R.id.loadingProgress)
 
-        // إبقاء شاشة التحميل ظاهرة في البداية لمنع ظهور أي شعارات خارجية
         splashOverlay.visibility = View.VISIBLE
 
         setupWebView()
         setupSwipeRefresh()
         setupBackNavigation()
 
-        // تحميل الصفحة
         webView.loadUrl(APP_URL)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
-        // تفعيل الكوكيز والكوكيز للطرف الثالث
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.setAcceptCookie(true)
-        cookieManager.setAcceptThirdPartyCookies(webView, true)
-
         val settings: WebSettings = webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
         settings.setGeolocationEnabled(true)
-        settings.allowFileAccess = false
-        settings.allowContentAccess = false
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
-
-        // إعدادات الكاش لدعم العمل دون اتصال بالإنترنت
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-        // ربط واجهة الأندرويد مع الويب
+        // إزالة تعريف WebView المقيد ليتعرف جوجل على الحسابات بسهولة
+        val defaultUserAgent = settings.userAgentString
+        settings.userAgentString = defaultUserAgent.replace("; wv", "").replace("Version/4.0 ", "")
+
+        // تفعيل ملفات تعريف الارتباط والكوكيز
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        cookieManager.setAcceptThirdPartyCookies(webView, true)
+
         webView.addJavascriptInterface(WebAppInterface(), "AndroidBridge")
 
         webView.webChromeClient = object : WebChromeClient() {
@@ -100,25 +88,17 @@ class MainActivity : AppCompatActivity() {
                 origin: String?,
                 callback: GeolocationPermissions.Callback?
             ) {
-                // منح صلاحية الموقع الجغرافي لتطبيق الخرائط
                 callback?.invoke(origin, true, false)
             }
         }
 
         webView.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                // الحفاظ على شاشة البداية ظاهرة لمنع وميض الشاشات الخارجية
-            }
-
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 swipeRefresh.isRefreshing = false
-
-                // في حال لم ترسل صفحة الويب إشارة الجاهزية، يتم إخفاء شاشة البداية بعد ثانية واحدة بأمان
                 view?.postDelayed({
                     hideSplashScreen()
-                }, 1200)
+                }, 1000)
             }
 
             override fun onReceivedError(
@@ -156,7 +136,7 @@ class MainActivity : AppCompatActivity() {
         if (splashOverlay.visibility == View.VISIBLE) {
             splashOverlay.animate()
                 .alpha(0f)
-                .setDuration(350)
+                .setDuration(300)
                 .withEndAction {
                     splashOverlay.visibility = View.GONE
                 }
@@ -164,12 +144,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // بدء عملية تسجيل الدخول بجوجل عبر Credential Manager بنقرة واحدة
+    // استدعاء نافذة جوجل الرسمية لاختيار الحساب
     fun launchGoogleSignIn() {
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.Main) {
             try {
                 val googleIdOption = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false) // يسمح باختيار أي حساب مسجل على الهاتف
+                    .setFilterByAuthorizedAccounts(false)
                     .setServerClientId(WEB_CLIENT_ID)
                     .setAutoSelectEnabled(false)
                     .build()
@@ -178,25 +158,21 @@ class MainActivity : AppCompatActivity() {
                     .addCredentialOption(googleIdOption)
                     .build()
 
-                val result = withContext(Dispatchers.IO) {
-                    credentialManager.getCredential(
-                        request = request,
-                        context = this@MainActivity
-                    )
-                }
+                val result = credentialManager.getCredential(
+                    request = request,
+                    context = this@MainActivity
+                )
 
                 val credential = result.credential
                 if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                     val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data)
-                    val token = googleIdToken.idToken
-
-                    // تمرير التوكن مباشرة لدالة الويب لتسجيل الدخول الفوري
-                    passTokenToWeb(token)
+                    passTokenToWeb(googleIdToken.idToken)
                 }
-            } catch (e: GetCredentialException) {
-                // المستخدم ألغى الاختيار أو لم تكتمل العملية
             } catch (e: Exception) {
-                e.printStackTrace()
+                // إذا لم يتم الاختيار أو حدث تعذر في الأندرويد، نطلب من الويب المتابعة دون تجميد
+                runOnUiThread {
+                    webView.evaluateJavascript("window.onNativeAuthFailed && window.onNativeAuthFailed();", null)
+                }
             }
         }
     }
@@ -215,13 +191,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // الكائن المتاح لصفحة الويب لاستدعاء مزايا الأندرويد
     inner class WebAppInterface {
-
         @JavascriptInterface
         fun onAppReady() {
             runOnUiThread {
-                isAppReadyReceived = true
                 hideSplashScreen()
             }
         }
